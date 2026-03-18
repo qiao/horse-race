@@ -41,10 +41,12 @@ The result? Better code than any single generation, consistently. 💪
 
 ```mermaid
 flowchart TD
+    M[Main Agent] -->|spawns| A1 & A2 & A3
+
     subgraph P1["Phase 1: Independent Implementation"]
-        A1[Agent 1] -->|solves task| S1[Solution 1]
-        A2[Agent 2] -->|solves task| S2[Solution 2]
-        A3[Agent 3] -->|solves task| S3[Solution 3]
+        A1[Subagent 1] -->|solves task| S1[Solution 1]
+        A2[Subagent 2] -->|solves task| S2[Solution 2]
+        A3[Subagent 3] -->|solves task| S3[Solution 3]
     end
 
     subgraph P2["Phase 2: Improvement Rounds"]
