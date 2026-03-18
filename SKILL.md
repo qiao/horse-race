@@ -81,14 +81,37 @@ prompt: |
   Each bullet should be one concise sentence describing a key decision or approach you took.
 ```
 
-### Step 2: Collect Diffs
+### Step 2: Collect Diffs and Display Summaries
 
-After all agents complete, extract the diff from each agent's response.
+After all agents complete, extract the diff and SUMMARY from each agent's response.
 
 Store diffs:
 - Agent 1 → diff_1
 - Agent 2 → diff_2
 - Agent 3 → diff_3
+
+**Display each agent's summary to the user.** Output a status update like:
+
+```
+### Phase 1 Complete — Initial Implementations
+
+**Agent 1:**
+- {bullet 1}
+- {bullet 2}
+- ...
+
+**Agent 2:**
+- {bullet 1}
+- {bullet 2}
+- ...
+
+**Agent 3:**
+- {bullet 1}
+- {bullet 2}
+- ...
+```
+
+This is important because the user cannot see subagent output directly — they rely on the orchestrator to surface it.
 
 If an agent failed to produce a diff or errored out, exclude it from subsequent rounds. If fewer than 2 agents remain, abort and report to the user.
 
@@ -135,7 +158,31 @@ message: |
   - ... (max 5 bullets describing your key changes this round)
 ```
 
-After each round, collect the new diffs for input to the next round.
+After each round, collect the new diffs and display each agent's IDEAS ADOPTED and SUMMARY to the user:
+
+```
+### Improvement Round {round} Complete
+
+**Agent 1:**
+Ideas adopted:
+- From Agent 2: {what they took}
+- ...
+Summary:
+- {bullet 1}
+- ...
+
+**Agent 2:**
+Ideas adopted:
+- From Agent 1: {what they took}
+- ...
+Summary:
+- {bullet 1}
+- ...
+
+(repeat for all agents)
+```
+
+This keeps the user informed of how solutions are evolving across rounds.
 
 ### Step 4: Borda Count Voting by Independent Judges (Phase 3)
 
@@ -282,7 +329,8 @@ If that also fails, report the leftover worktree paths to the user so they can c
 
 Give the user a concise summary:
 - How many agents participated and how many rounds ran
-- Borda count scores and each judge's rankings
+- Each agent's final SUMMARY bullets (so the user can see what each approach did)
+- Borda count scores and each judge's rankings (including likes/dislikes)
 - Whether a tiebreak was needed
 - Brief description of what the winning solution does
 - Remind them changes are applied but not committed
