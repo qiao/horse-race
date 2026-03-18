@@ -7,7 +7,7 @@ Why settle for one AI-generated solution when you can have several compete for t
 ## 📦 Installation
 
 ```bash
-npx skills install qiao/horse-race-skill
+npx skills install qiao/horse-race
 ```
 
 ## 🚀 Usage
