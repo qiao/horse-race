@@ -5,21 +5,28 @@ description: "Competitive multi-agent problem solving: spawns multiple Claude Co
 
 # Horse Race: Competitive Multi-Agent Problem Solving
 
-You are orchestrating a "horse race" — multiple independent Claude Code agents competing to produce the best solution to a programming task. The process has three phases: independent implementation, cross-pollination improvement rounds, and Borda count consensus voting by independent judges.
+You are orchestrating a "horse race" — multiple independent agents competing to produce the best solution to a programming task. Agents can be Claude Code subagents or OpenAI Codex CLI agents (when available). The process has three phases: independent implementation, cross-pollination improvement rounds, and Borda count consensus voting by independent judges.
 
 ## Overview
 
 ```
+Phase 0: Detect Codex CLI
+  `which codex` → found?
+  Yes → 2 Claude Code + 2 Codex CLI agents (4 total)
+  No  → 3 Claude Code agents
+
 Phase 1: Independent Implementation
-  Agent A ──► Solution A
-  Agent B ──► Solution B    (all in parallel, isolated worktrees)
-  Agent C ──► Solution C
+  Agent A (Claude) ──► Solution A
+  Agent B (Claude) ──► Solution B    (all in parallel, isolated worktrees)
+  Agent C (Codex)  ──► Solution C
+  Agent D (Codex)  ──► Solution D
 
 Phase 2: Improvement Rounds (repeat N times)
   Each agent receives ALL other agents' diffs
-  Agent A sees B+C diffs ──► Improved A'
-  Agent B sees A+C diffs ──► Improved B'   (all in parallel)
-  Agent C sees A+B diffs ──► Improved C'
+  Agent A sees B+C+D diffs ──► Improved A'
+  Agent B sees A+C+D diffs ──► Improved B'   (all in parallel)
+  Agent C sees A+B+D diffs ──► Improved C'
+  Agent D sees A+B+C diffs ──► Improved D'
 
 Phase 3: Borda Count Voting by Independent Judges
   3 fresh judge agents rank all solutions
@@ -30,7 +37,7 @@ Phase 3: Borda Count Voting by Independent Judges
 
 ## Defaults
 
-- **Implementation agents**: 3
+- **Implementation agents**: 4 if Codex CLI available (2 Claude Code + 2 Codex), otherwise 3 (all Claude Code)
 - **Improvement rounds**: 1
 - **Voting judges**: 3
 - **Voting method**: Borda count, ties broken by independent tiebreak judge
@@ -46,12 +53,15 @@ Before spawning agents:
 2. Extract the **task description** from the user's message.
 3. Parse any overrides for agent count or round count.
 4. Note the current branch name and HEAD commit.
+5. **Detect Codex CLI** by running `which codex`. If the command is found, set `codex_available = true` and plan for 2 Claude Code agents + 2 Codex CLI agents (4 total). If not found, set `codex_available = false` and use 3 Claude Code agents. Tell the user which configuration was detected.
 
 ### Step 1: Independent Implementation (Phase 1)
 
-Spawn all agents **in a single message** so they run in parallel. Each agent uses `isolation: "worktree"` to get its own copy of the repo.
+Spawn all agents **in a single message** so they run in parallel.
 
-For each agent (numbered 1 through N), use the Agent tool with:
+#### Claude Code Agents
+
+For each Claude Code agent (numbered 1 through N_claude), use the Agent tool with `isolation: "worktree"`:
 
 ```
 description: "horse-{i}"
@@ -79,14 +89,44 @@ prompt: |
   Each bullet should be one concise sentence describing a key decision or approach you took.
 ```
 
+#### Codex CLI Agents (only when `codex_available = true`)
+
+For each Codex agent, you must first create a worktree manually, then run the Codex CLI inside it. Spawn these Bash commands **in the same single message** as the Claude Code agents above so everything runs in parallel.
+
+For each Codex agent (numbered N_claude+1 through N_total), use the Bash tool with `run_in_background: true`:
+
+```bash
+# Create a worktree for this Codex agent
+WORKTREE_PATH="$(git rev-parse --show-toplevel)/.worktrees/codex-agent-{i}"
+git worktree add "$WORKTREE_PATH" HEAD --detach
+
+# Run Codex CLI non-interactively in the worktree with full-auto mode
+cd "$WORKTREE_PATH" && codex exec --full-auto -o /tmp/codex-agent-{i}-output.txt "{task_description}"
+
+# Capture the diff
+cd "$WORKTREE_PATH" && git diff HEAD
+```
+
+**Notes on Codex CLI flags:**
+- `codex exec` runs non-interactively (no TUI)
+- `--full-auto` enables on-request approvals + workspace-write sandbox (low-friction preset)
+- `-o /tmp/codex-agent-{i}-output.txt` writes the final assistant message to a file for easy parsing
+
+**Important:** The diff comes from the `git diff HEAD` output at the end. The Codex agent's reasoning is in the `-o` output file. Codex agents do not produce a SUMMARY section — you should generate a brief summary by reading their diff.
+
 ### Step 2: Collect Diffs, Agent IDs, and Display Summaries
 
-After all agents complete, extract the diff, SUMMARY, and **agent ID** from each agent's response. The agent ID is returned automatically when each Agent tool call completes (e.g., `agentId: a63a526a86822148a`). You MUST save these IDs — they are required to continue agents in improvement rounds via SendMessage.
+After all agents complete, extract the diff and SUMMARY from each agent's response.
+
+**For Claude Code agents:** The agent ID is returned automatically when each Agent tool call completes (e.g., `agentId: a63a526a86822148a`). You MUST save these IDs — they are required to continue agents in improvement rounds via SendMessage.
+
+**For Codex CLI agents:** Parse the diff from the Bash output. Save the worktree path — it's needed for improvement rounds. Generate a brief summary by reading their diff since Codex agents don't produce a SUMMARY section.
 
 Store for each agent:
-- Agent 1 → diff_1, agent_id_1
-- Agent 2 → diff_2, agent_id_2
-- Agent 3 → diff_3, agent_id_3
+- Agent 1 (Claude) → diff_1, agent_id_1, type: "claude"
+- Agent 2 (Claude) → diff_2, agent_id_2, type: "claude"
+- Agent 3 (Codex) → diff_3, worktree_path_3, type: "codex"
+- Agent 4 (Codex) → diff_4, worktree_path_4, type: "codex"
 
 **Display each agent's summary to the user.** Output a status update like:
 
@@ -115,9 +155,11 @@ If an agent failed to produce a diff or errored out, exclude it from subsequent 
 
 ### Step 3: Improvement Rounds (Phase 2)
 
-For each improvement round (default: 1 round), **continue** each agent using SendMessage with the agent ID captured in Step 2. Each agent receives all other agents' diffs. Send all messages **in a single message** so they run in parallel.
+For each improvement round (default: 1 round), send all agents the other agents' diffs. Send all messages **in a single message** so they run in parallel.
 
-Send to each agent:
+#### Claude Code agents — use SendMessage
+
+Continue each Claude Code agent using SendMessage with the agent ID captured in Step 2:
 
 ```
 to: "{agent_id_i}"   # The agent ID returned from Step 1 (e.g., "a63a526a86822148a")
@@ -155,6 +197,28 @@ message: |
   - {bullet 2}
   - ... (max 5 bullets describing your key changes this round)
 ```
+
+#### Codex CLI agents — use Bash
+
+For each Codex agent, construct a prompt that includes the other agents' diffs and run Codex CLI again in the same worktree. Use the Bash tool with `run_in_background: true`:
+
+```bash
+cd "{worktree_path_i}" && codex exec --full-auto -o /tmp/codex-agent-{i}-round-{round}.txt "IMPROVEMENT ROUND {round}
+
+Here are other agents' solutions. Study them and improve your solution by incorporating the best ideas.
+
+{for each other agent j:}
+--- Agent {j}'s diff ---
+{agent_j_diff}
+{end for}
+
+Carefully study every other agent's diff. Consider what they did better, what they did worse, and any clever approaches or edge cases they handled that you missed. Improve your solution by incorporating the best ideas while fixing any issues. Cherry-pick good ideas freely, but maintain coherence."
+
+# Capture the updated diff
+cd "{worktree_path_i}" && git diff HEAD
+```
+
+**Important:** Codex agents don't produce IDEAS ADOPTED or SUMMARY sections. Generate these by comparing their new diff against their previous diff.
 
 After each round, collect the new diffs and display each agent's IDEAS ADOPTED and SUMMARY to the user:
 
@@ -337,7 +401,9 @@ Give the user a concise summary:
 
 - **Agent fails entirely**: Exclude from subsequent rounds. If fewer than 2 agents remain, abort and report.
 - **Agent produces no diff**: Treat as empty solution. It can still participate in improvement rounds.
-- **SendMessage fails for an agent**: That agent is out of the race. Continue with remaining agents.
+- **SendMessage fails for a Claude agent**: That agent is out of the race. Continue with remaining agents.
+- **Codex CLI fails or times out**: Exclude that agent. Continue with remaining agents.
+- **Codex CLI not found at runtime**: Fall back to 3 Claude Code agents and inform the user.
 - **All agents produce identical solutions**: Skip voting, apply one of them.
 - **Judge's ranking is malformed**: Try to parse what you can. If completely unparseable, exclude that judge's vote and note it in the report.
 - **git apply fails**: Save diff to `/tmp/horse-race-winner.patch`, inform user.
