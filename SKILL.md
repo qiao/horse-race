@@ -31,7 +31,7 @@ Phase 3: Borda Count Voting by Independent Judges
 ## Defaults
 
 - **Implementation agents**: 3
-- **Improvement rounds**: 2
+- **Improvement rounds**: 1
 - **Voting judges**: 3
 - **Voting method**: Borda count, ties broken by independent tiebreak judge
 
@@ -115,7 +115,7 @@ If an agent failed to produce a diff or errored out, exclude it from subsequent 
 
 ### Step 3: Improvement Rounds (Phase 2)
 
-For each improvement round (default: 2 rounds), **continue** each agent using SendMessage with the agent ID captured in Step 2. Each agent receives all other agents' diffs. Send all messages **in a single message** so they run in parallel.
+For each improvement round (default: 1 round), **continue** each agent using SendMessage with the agent ID captured in Step 2. Each agent receives all other agents' diffs. Send all messages **in a single message** so they run in parallel.
 
 Send to each agent:
 
