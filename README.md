@@ -2,7 +2,7 @@
 
 **One prompt. Multiple agents. Best solution wins.**
 
-Why settle for one AI-generated solution when you can have several compete for the best one? Horse Race spawns multiple Claude Code agents in parallel, lets them learn from each other, and picks the winner through a blind vote. All automatically.
+Why settle for one AI-generated solution when you can have several compete for the best one? Horse Race spawns multiple agents in parallel — Claude Code subagents and [OpenAI Codex CLI](https://github.com/openai/codex) agents when available — lets them learn from each other, and picks the winner through a blind vote. All automatically.
 
 ## 📦 Installation
 
@@ -41,19 +41,25 @@ The result? Better code than any single generation, consistently. 💪
 
 ```mermaid
 flowchart TD
-    M[Main Agent] -->|spawns| A1 & A2 & A3
+    M[Main Agent] -->|detects Codex CLI| D{Codex available?}
+    D -->|Yes| SPAWN4[Spawn 2 Claude + 2 Codex agents]
+    D -->|No| SPAWN3[Spawn 3 Claude agents]
+    SPAWN4 --> P1
+    SPAWN3 --> P1
 
     subgraph P1["Phase 1: Independent Implementation"]
-        A1[Subagent 1] -->|solves task| S1[Solution 1]
-        A2[Subagent 2] -->|solves task| S2[Solution 2]
-        A3[Subagent 3] -->|solves task| S3[Solution 3]
+        A1["Agent 1 (Claude)"] -->|solves task| S1[Solution 1]
+        A2["Agent 2 (Claude)"] -->|solves task| S2[Solution 2]
+        A3["Agent 3 (Codex)"] -->|solves task| S3[Solution 3]
+        A4["Agent 4 (Codex)"] -->|solves task| S4[Solution 4]
     end
 
     subgraph P2["Phase 2: Improvement Rounds"]
-        S1 & S2 & S3 -->|share diffs| X((Cross-Pollination))
+        S1 & S2 & S3 & S4 -->|share diffs| X((Cross-Pollination))
         X -->|improve| S1a["Solution 1'"]
         X -->|improve| S2a["Solution 2'"]
         X -->|improve| S3a["Solution 3'"]
+        X -->|improve| S4a["Solution 4'"]
     end
 
     subgraph P3["Phase 3: Borda Count Voting"]
@@ -63,17 +69,18 @@ flowchart TD
     S1a --> J1 & J2 & J3
     S2a --> J1 & J2 & J3
     S3a --> J1 & J2 & J3
+    S4a --> J1 & J2 & J3
 
     W -->|apply diff| R[Changes applied to working tree]
 ```
 
 ### 🐎 Phase 1: Independent Implementation
 
-Multiple agents are spawned in parallel, each in its own isolated git worktree. Every agent independently solves the same task with no knowledge of what the others are doing. This naturally produces diverse approaches: different algorithms, different code structures, different edge case handling. It gives the process a wide solution space to work with.
+Multiple agents are spawned in parallel, each in its own isolated git worktree. If [OpenAI Codex CLI](https://github.com/openai/codex) is installed, the race uses 2 Claude Code subagents and 2 Codex CLI agents (4 total); otherwise it falls back to 3 Claude Code subagents. Mixing model providers adds genuine diversity to the solution space — different models have different strengths, blind spots, and coding styles. Every agent independently solves the same task with no knowledge of what the others are doing.
 
 ### 🔄 Phase 2: Improvement Rounds
 
-Here's where it gets interesting. After the initial implementations, each agent receives the diffs from **all** other agents. They study what others did better, identify clever approaches or edge cases they missed, and incorporate the best ideas into their own solution while maintaining coherence. This cross-pollination runs for multiple rounds (default: 2), with agents sharing updated diffs each time. Solutions converge toward higher quality while retaining their distinct approaches.
+Here's where it gets interesting. After the initial implementations, each agent receives the diffs from **all** other agents. They study what others did better, identify clever approaches or edge cases they missed, and incorporate the best ideas into their own solution while maintaining coherence. This cross-pollination runs for multiple rounds (default: 1), with agents sharing updated diffs each time. Solutions converge toward higher quality while retaining their distinct approaches.
 
 Think of it like a writers' room. Everyone drafts independently, then passes their work around the table for feedback and inspiration.
 
@@ -87,6 +94,6 @@ The winning diff is applied to your working tree (but not committed), so you can
 
 | Parameter | Default |
 |---|---|
-| Implementation agents | 3 |
-| Improvement rounds | 2 |
+| Implementation agents | 4 (2 Claude + 2 Codex) if Codex CLI installed, otherwise 3 (all Claude) |
+| Improvement rounds | 1 |
 | Voting judges | 3 |
